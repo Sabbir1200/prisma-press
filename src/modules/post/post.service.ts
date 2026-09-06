@@ -1,6 +1,9 @@
+
+import { title } from "node:process";
 import { CommentStatus, PostStatus } from "../../../generated/prisma/enums";
 import { prisma } from "../../lib/prisma";
-import { ICreatePostPayload, IUpdatePostPayload } from "./post.interface";
+import { ICreatePostPayload, IPostQuery, IUpdatePostPayload } from "./post.interface";
+import { PostWhereInput } from "../../../generated/prisma/models";
 
 const createPost = async (payload: ICreatePostPayload, userId: string) => {
   const result = await prisma.post.create({
@@ -13,8 +16,121 @@ const createPost = async (payload: ICreatePostPayload, userId: string) => {
   return result;
 };
 
-const getAllPosts = async () => {
+
+
+const getAllPosts = async (query : IPostQuery) => {
+  const limit = query.limit ? Number(query.limit) : 10;
+  const page = query.page ? Number(query.page) : 1;
+  const skip = (page - 1) * limit;
+  const sortBy = query.sortBy ? query.sortBy : "createdAt";
+  const sortOrder = query.sortOrder ? query.sortOrder : "desc";
+
+
+  const tags = query.tags ? JSON.parse(query.tags as string) : null;
+
+  const tagsArray = Array.isArray(tags) ? tags : []
+
+  const andCondition : PostWhereInput[] =  [];
+
+  if(query.searchTerm){
+    andCondition.push({
+      OR:[
+          {
+              title : {
+                contains : query.searchTerm,
+                mode: "insensitive"
+              },
+              
+            },
+            {
+              content : {
+                contains : query.searchTerm,
+               mode: "insensitive"
+              },
+            }
+      ]
+    })
+  }
+
+  if(query.title){
+    andCondition.push({
+      title : query.title
+    })
+  }
+  if(query.content){
+    andCondition.push({
+      content : query.content
+    })
+  }
+  if(query.authorId){
+    andCondition.push({
+      authorId : query.authorId
+    })
+  }
+
+  if(query.isFeatured){
+    andCondition.push({
+      isFeatured : Boolean(query.isFeatured)
+    })
+  }
+  if(query.tags){
+    andCondition.push({
+      tags : {
+        hasSome: tagsArray
+      }
+    })
+  }
+
+  if(query.status){
+    andCondition.push({
+      status: query.status
+    })
+  }
+
   const posts = await prisma.post.findMany({
+
+
+    // dynamic searching, filtering
+    // where : {
+    //   AND : [
+
+    //     query.searchTerm ? {
+    //       OR: [
+    //         {
+    //           title : {
+    //             contains : query.searchTerm,
+    //             node: "insensitive"
+    //           },
+              
+    //         },
+    //         {
+    //           content : {
+    //             contains : query.searchTerm,
+    //             node: "insensitive"
+    //           },
+    //         }
+    //       ]
+    //     } : {},
+
+    //       query.title ? {title : query.title } : {},
+
+    //       query.content ? {content : query.content} : {}
+    //   ]
+    // },
+
+    where : {
+      AND : andCondition
+    },
+
+
+    // dynamic pagination and sorting
+    take : limit,
+    skip : skip,
+
+    orderBy :{
+        [sortBy] : sortOrder
+    },
+
     include: {
       author: {
         omit: {
@@ -167,36 +283,36 @@ const deletePost = async (
 const getPostsStats = async() => {
     const transactionResult = await prisma.$transaction(
         async(tx)=>{
-            const totalPosts = await tx.post.count();
+            // const totalPosts = await tx.post.count();
 
-            const totalPublishedPosts = await tx.post.count({
-                where : {
-                    status : PostStatus.PUBLISHED
-                }
-            })
-            const totalDraftPosts= await tx.post.count({
-                where : {
-                    status : PostStatus.DRAFT
-                }
-            })
-            const totalArchivedPosts = await tx.post.count({
-                where : {
-                    status : PostStatus.ARCHIVED
-                }
-            })
+            // const totalPublishedPosts = await tx.post.count({
+            //     where : {
+            //         status : PostStatus.PUBLISHED
+            //     }
+            // })
+            // const totalDraftPosts= await tx.post.count({
+            //     where : {
+            //         status : PostStatus.DRAFT
+            //     }
+            // })
+            // const totalArchivedPosts = await tx.post.count({
+            //     where : {
+            //         status : PostStatus.ARCHIVED
+            //     }
+            // })
 
-            const totalComments = await tx.comment.count();
+            // const totalComments = await tx.comment.count();
 
-            const totalApprovedComments = await tx.comment.count({
-                where:{
-                    status: CommentStatus.APPROVED
-                }
-            })
-            const totalRejectedComments = await tx.comment.count({
-                where:{
-                    status: CommentStatus.REJECT
-                }
-            })
+            // const totalApprovedComments = await tx.comment.count({
+            //     where:{
+            //         status: CommentStatus.APPROVED
+            //     }
+            // })
+            // const totalRejectedComments = await tx.comment.count({
+            //     where:{
+            //         status: CommentStatus.REJECT
+            //     }
+            // })
 
             // const allPosts = await tx.post.findMany();
 
@@ -206,13 +322,70 @@ const getPostsStats = async() => {
             //     totalPostViews = totalPostViews + post.views
             // })
 
-            const totalPostViews = await tx.post.aggregate({
+            // const totalPostViews = await tx.post.aggregate({
+            //     _sum :{
+            //         views : true
+            //     }
+            // })
+
+            // return {
+            //     totalPosts,
+            //     totalPublishedPosts,
+            //     totalDraftPosts,
+            //     totalArchivedPosts,
+            //     totalComments,
+            //     totalApprovedComments,
+            //     totalRejectedComments,
+            //     totalPostViews
+            // }
+
+          const [
+             totalPosts,
+                totalPublishedPosts,
+                totalDraftPosts,
+                totalArchivedPosts,
+                totalComments,
+                totalApprovedComments,
+                totalRejectedComments,
+                totalPostViews
+          ] =  await Promise.all([
+                await tx.post.count(),
+                 await tx.post.count({
+                where : {
+                    status : PostStatus.PUBLISHED
+                }
+            }),
+
+            await tx.post.count({
+                where : {
+                    status : PostStatus.DRAFT
+                }
+            }),
+            await tx.post.count({
+                where : {
+                    status : PostStatus.ARCHIVED
+                }
+            }),
+             await tx.comment.count(),
+
+             tx.comment.count({
+                where:{
+                    status: CommentStatus.APPROVED
+                }
+            }),
+            tx.comment.count({
+                where:{
+                    status: CommentStatus.REJECT
+                }
+            }),
+            await tx.post.aggregate({
                 _sum :{
                     views : true
                 }
             })
 
-            return {
+            ]);
+             return {
                 totalPosts,
                 totalPublishedPosts,
                 totalDraftPosts,
