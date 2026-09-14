@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "stripe:webhook": "stripe listen --forward-to localhost:5000/api/subscription/webhook",
     "start": "node dist/server.js"
   },
   "dependencies": {
@@ -22,7 +23,8 @@
     "express": "^5.2.1",
     "http-status": "^2.1.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "stripe": "^22.6.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
